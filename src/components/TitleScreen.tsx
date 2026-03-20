@@ -61,25 +61,14 @@ export default function TitleScreen({ onStart }: Props) {
           🏗️
         </motion.div>
 
-        {/* Quest label */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="inline-flex items-center gap-2 bg-white border-2 border-green-300 text-green-700 font-bold px-5 py-2 rounded-2xl mb-6 shadow-sm"
-        >
-          <span>🎵</span> Today's Quest: Build Spotify
-        </motion.div>
-
         {/* Flavor text */}
         <motion.p
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.6 }}
+          transition={{ delay: 0.5 }}
           className="text-gray-600 text-lg leading-relaxed mb-10"
         >
-          You are a tech genius kid inventor. Today, you woke up and decided to build
-          Spotify in your backyard.
+          You are a tech genius kid inventor. Pick a quest and start building real systems in your backyard.
         </motion.p>
 
         {/* CTA buttons */}
@@ -93,7 +82,7 @@ export default function TitleScreen({ onStart }: Props) {
             onClick={onStart}
             className="bg-violet-600 hover:bg-violet-700 active:scale-95 text-white font-bold text-xl px-10 py-4 rounded-2xl shadow-lg shadow-violet-200 transition-all hover:scale-105 hover:shadow-xl hover:shadow-violet-200 cursor-pointer"
           >
-            Start Building 🔧
+            Choose a Quest 🔧
           </button>
           <button
             onClick={() => setShowHowItWorks(v => !v)}
@@ -112,10 +101,10 @@ export default function TitleScreen({ onStart }: Props) {
           >
             <p className="font-bold text-gray-800 text-base mb-3">How Backyard Builder works</p>
             <p>🎭 <strong>You play a kid inventor</strong> building real tech in your backyard.</p>
-            <p>🏗️ <strong>Drag & drop components</strong> to build your system.</p>
-            <p>🧪 <strong>Test your build</strong> to see how it handles real traffic.</p>
+            <p>🏗️ <strong>Build systems</strong> by selecting or placing components.</p>
+            <p>🧪 <strong>Test your build</strong> to see how it handles real scenarios.</p>
             <p>📚 <strong>Learn system design</strong> through play — not lectures.</p>
-            <p className="text-violet-600 font-medium pt-2">Scenario 1 teaches: single server bottlenecks, vertical scaling, horizontal scaling, and load balancing.</p>
+            <p className="text-violet-600 font-medium pt-2">Multiple quests available: Build Spotify teaches scaling. Build Amazon teaches transactions.</p>
           </motion.div>
         )}
       </motion.div>

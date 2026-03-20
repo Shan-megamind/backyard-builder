@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import type { GameScreen, ComponentId } from './types';
+import type { GameScreen, ComponentId, QuestId, ScenarioResult } from './types';
 import TitleScreen from './components/TitleScreen';
+import QuestSelect from './components/QuestSelect';
 import IntroDialogue from './components/IntroDialogue';
 import ProblemReveal from './components/ProblemReveal';
 import BuildPhase from './components/BuildPhase';
@@ -11,7 +12,43 @@ import ScenarioBuild from './components/ScenarioBuild';
 import ScenarioSimulation from './components/ScenarioSimulation';
 import ResultScreen from './components/ResultScreen';
 import EndScreen from './components/EndScreen';
-import { getScenario } from './data/index';
+import NavBar from './components/NavBar';
+import { getScenario, getOutcomeData, calcOutcomeScore, getQuestScenarioCount } from './data/index';
+import { AMAZON_INTRO_LINES } from './data/amazonScenarios';
+import { INTRO_LINES } from './data/scenario1';
+
+// ── localStorage helpers ──────────────────────────────────────────────────────
+
+const STORAGE_KEY = 'backyard-builder-progress';
+
+interface SavedState {
+  questId: QuestId;
+  scenarioId: number;
+  questResults: ScenarioResult[];
+}
+
+function loadProgress(): SavedState | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as SavedState) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveProgress(state: SavedState) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch { /* ignore */ }
+}
+
+function clearProgress() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch { /* ignore */ }
+}
+
+// ── Spotify S1 logic ──────────────────────────────────────────────────────────
 
 function deriveS1Outcome(placed: ComponentId[]): string {
   const hasMega = placed.includes('mega-machine');
@@ -22,43 +59,95 @@ function deriveS1Outcome(placed: ComponentId[]): string {
   return 'B';
 }
 
-const TOTAL_SCENARIOS = 6;
-
-// Progress: 4 steps per scenario (problem, build, sim, result) × 6 scenarios + title/intro
-function calcProgress(screen: GameScreen, scenarioId: number): number {
+function calcProgress(screen: GameScreen, scenarioId: number, totalScenarios: number): number {
   const stepMap: Partial<Record<GameScreen, number>> = {
-    title: 0,
-    intro: 0.02,
-    problem: 0,
-    build: 1,
-    simulating: 2,
-    result: 3,
-    end: 4,
+    title: 0, quest_select: 0, intro: 0.02,
+    problem: 0, build: 1, simulating: 2, result: 3, end: 4,
   };
-  if (screen === 'title') return 0;
+  if (screen === 'title' || screen === 'quest_select') return 0;
   if (screen === 'intro') return 0.02;
   if (screen === 'end') return 1;
   const step = stepMap[screen] ?? 0;
-  return ((scenarioId - 1) * 4 + step) / (TOTAL_SCENARIOS * 4);
+  return ((scenarioId - 1) * 4 + step) / (totalScenarios * 4);
 }
+
+// ── App ───────────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [screen, setScreen] = useState<GameScreen>('title');
+  const [questId, setQuestId] = useState<QuestId>('spotify');
   const [scenarioId, setScenarioId] = useState(1);
-
-  // Scenario 1 specific
   const [placedComponents, setPlacedComponents] = useState<ComponentId[]>([]);
-
-  // Scenarios 2-6: selected option ID (kept for potential replay state)
   const [_selectedOption, setSelectedOption] = useState<string | null>(null);
-
-  // Unified outcome key (string) — 'A'/'B'/'C' for s1, option-id for s2-6
   const [outcomeKey, setOutcomeKey] = useState<string | null>(null);
+  const [questResults, setQuestResults] = useState<ScenarioResult[]>([]);
 
-  // Animation key changes on screen+scenario to trigger AnimatePresence
-  const pageKey = `${screen}-${scenarioId}`;
+  // Mirrors localStorage — updated any time we save or clear progress
+  const [savedState, setSavedState] = useState<SavedState | null>(() => loadProgress());
 
-  const progress = calcProgress(screen, scenarioId);
+  // When non-null, the player is redoing a specific scenario from the EndScreen
+  const [redoScenarioId, setRedoScenarioId] = useState<number | null>(null);
+
+  const totalScenarios = getQuestScenarioCount(questId);
+  const pageKey = `${screen}-${questId}-${scenarioId}`;
+  const progress = calcProgress(screen, scenarioId, totalScenarios);
+
+  const isSpotifyS1 = questId === 'spotify' && scenarioId === 1;
+  const currentScenario = !isSpotifyS1 ? getScenario(questId, scenarioId) : null;
+  const showNavBar = screen !== 'title' && screen !== 'quest_select' && screen !== 'end';
+
+  // ── Result recording helper ─────────────────────────────────────────────────
+
+  function recordResult(
+    sid: number, key: string, current: ScenarioResult[]
+  ): ScenarioResult[] {
+    const outcome = getOutcomeData(questId, sid, key);
+    const score = calcOutcomeScore(outcome);
+    const result: ScenarioResult = {
+      scenarioId: sid,
+      outcomeKey: key,
+      score,
+      isOptimal: outcome.isOptimal,
+      conceptUnlocked: outcome.conceptUnlocked,
+      label: outcome.label,
+      emoji: outcome.emoji,
+      optimalHint: outcome.optimalHint,
+    };
+    return [...current.filter(r => r.scenarioId !== sid), result];
+  }
+
+  // ── Handlers ────────────────────────────────────────────────────────────────
+
+  function handleQuestSelect(selected: QuestId) {
+    setQuestId(selected);
+    setScenarioId(1);
+    setPlacedComponents([]);
+    setSelectedOption(null);
+    setOutcomeKey(null);
+    setQuestResults([]);
+    setScreen('intro');
+  }
+
+  function handleResume() {
+    if (!savedState) return;
+    setQuestId(savedState.questId);
+    setScenarioId(savedState.scenarioId);
+    setQuestResults(savedState.questResults);
+    setRedoScenarioId(null);
+    setPlacedComponents([]);
+    setSelectedOption(null);
+    setOutcomeKey(null);
+    setScreen('problem');
+  }
+
+  function handleRedoScenario(sid: number) {
+    setRedoScenarioId(sid);
+    setScenarioId(sid);
+    setPlacedComponents([]);
+    setSelectedOption(null);
+    setOutcomeKey(null);
+    setScreen('problem');
+  }
 
   function handleS1Test(placed: ComponentId[]) {
     setPlacedComponents(placed);
@@ -89,10 +178,30 @@ export default function App() {
   }
 
   function handleContinue() {
+    const updatedResults = outcomeKey
+      ? recordResult(scenarioId, outcomeKey, questResults)
+      : questResults;
+    setQuestResults(updatedResults);
+
+    // If redoing a scenario from the EndScreen, return there when done
+    if (redoScenarioId !== null) {
+      setRedoScenarioId(null);
+      setPlacedComponents([]);
+      setSelectedOption(null);
+      setOutcomeKey(null);
+      setScreen('end');
+      return;
+    }
+
     const next = scenarioId + 1;
-    if (next > TOTAL_SCENARIOS) {
+    if (next > totalScenarios) {
+      clearProgress();
+      setSavedState(null);
       setScreen('end');
     } else {
+      const saved = { questId, scenarioId: next, questResults: updatedResults };
+      saveProgress(saved);
+      setSavedState(saved);
       setScenarioId(next);
       setPlacedComponents([]);
       setSelectedOption(null);
@@ -102,17 +211,58 @@ export default function App() {
   }
 
   function handleRestart() {
+    clearProgress();
+    setSavedState(null);
+    setRedoScenarioId(null);
     setScenarioId(1);
     setPlacedComponents([]);
     setSelectedOption(null);
     setOutcomeKey(null);
+    setQuestResults([]);
     setScreen('title');
   }
 
-  const currentScenario = scenarioId > 1 ? getScenario(scenarioId) : null;
+  function handleBackToQuests() {
+    setScenarioId(1);
+    setPlacedComponents([]);
+    setSelectedOption(null);
+    setOutcomeKey(null);
+    setQuestResults([]);
+    setScreen('quest_select');
+  }
+
+  function handleSaveAndLeave() {
+    // If redoing from EndScreen, just cancel redo and return to EndScreen
+    if (redoScenarioId !== null) {
+      setRedoScenarioId(null);
+      setScenarioId(1);
+      setPlacedComponents([]);
+      setSelectedOption(null);
+      setOutcomeKey(null);
+      setScreen('end');
+      return;
+    }
+    const toSave = { questId, scenarioId, questResults };
+    saveProgress(toSave);
+    setSavedState(toSave);
+    handleBackToQuests();
+  }
+
+  const introLines = questId === 'amazon' ? AMAZON_INTRO_LINES : INTRO_LINES;
 
   return (
-    <div className="min-h-screen overflow-x-hidden">
+    <div className={`min-h-screen overflow-x-hidden ${showNavBar ? 'pt-11' : ''}`}>
+      {/* Persistent top nav — rendered outside AnimatePresence so it doesn't re-animate */}
+      {showNavBar && (
+        <NavBar
+          questId={questId}
+          scenarioId={scenarioId}
+          totalScenarios={totalScenarios}
+          leaveLabel={redoScenarioId !== null ? '← Summary' : '← Quests'}
+          onLeave={handleSaveAndLeave}
+        />
+      )}
+
       <AnimatePresence mode="wait">
         <motion.div
           key={pageKey}
@@ -123,26 +273,39 @@ export default function App() {
         >
           {/* ── Global screens ─────────────────────────────────────── */}
           {screen === 'title' && (
-            <TitleScreen onStart={() => setScreen('intro')} />
+            <TitleScreen onStart={() => setScreen('quest_select')} />
+          )}
+          {screen === 'quest_select' && (
+            <QuestSelect
+              onSelect={handleQuestSelect}
+              savedProgress={savedState ? { questId: savedState.questId, scenarioId: savedState.scenarioId } : null}
+              onResume={handleResume}
+            />
           )}
           {screen === 'intro' && (
-            <IntroDialogue onComplete={() => setScreen('problem')} />
+            <IntroDialogue lines={introLines} onComplete={() => setScreen('problem')} />
           )}
           {screen === 'end' && (
-            <EndScreen onRestart={handleRestart} />
+            <EndScreen
+              questId={questId}
+              results={questResults}
+              onRestart={handleRestart}
+              onBackToQuests={handleBackToQuests}
+              onRedoScenario={handleRedoScenario}
+            />
           )}
 
-          {/* ── Scenario 1: Drag-and-drop build ───────────────────── */}
-          {scenarioId === 1 && screen === 'problem' && (
+          {/* ── Spotify Scenario 1: Drag-and-drop build ────────────── */}
+          {isSpotifyS1 && screen === 'problem' && (
             <ProblemReveal onBuild={() => setScreen('build')} />
           )}
-          {scenarioId === 1 && screen === 'build' && (
+          {isSpotifyS1 && screen === 'build' && (
             <BuildPhase
               onTest={handleS1Test}
               onBack={() => setScreen('problem')}
             />
           )}
-          {scenarioId === 1 && screen === 'simulating' && outcomeKey && (
+          {isSpotifyS1 && screen === 'simulating' && outcomeKey && (
             <SimulationPhase
               placed={placedComponents}
               outcome={outcomeKey as 'A' | 'B' | 'C'}
@@ -150,24 +313,25 @@ export default function App() {
             />
           )}
 
-          {/* ── Scenarios 2-6: Card-selection build ───────────────── */}
-          {scenarioId > 1 && screen === 'problem' && currentScenario && (
+          {/* ── Generic card-selection scenarios (Spotify S2-6, all Amazon) ── */}
+          {!isSpotifyS1 && screen === 'problem' && currentScenario && (
             <ScenarioProblem
               scenario={currentScenario}
               onBuild={() => setScreen('build')}
             />
           )}
-          {scenarioId > 1 && screen === 'build' && currentScenario && (
+          {!isSpotifyS1 && screen === 'build' && currentScenario && (
             <ScenarioBuild
               scenario={currentScenario}
               onTest={handleOptionSelect}
               onBack={() => setScreen('problem')}
             />
           )}
-          {scenarioId > 1 && screen === 'simulating' && currentScenario && outcomeKey && (
+          {!isSpotifyS1 && screen === 'simulating' && currentScenario && outcomeKey && (
             <ScenarioSimulation
               scenario={currentScenario}
               optionId={outcomeKey}
+              questId={questId}
               onComplete={handleSimComplete}
             />
           )}
@@ -175,9 +339,11 @@ export default function App() {
           {/* ── Shared result screen ───────────────────────────────── */}
           {screen === 'result' && outcomeKey && (
             <ResultScreen
+              questId={questId}
               scenarioId={scenarioId}
               outcomeKey={outcomeKey}
-              totalScenarios={TOTAL_SCENARIOS}
+              totalScenarios={totalScenarios}
+              isRedoMode={redoScenarioId !== null}
               onReplay={handleReplay}
               onContinue={handleContinue}
               onRestart={handleRestart}
@@ -187,7 +353,7 @@ export default function App() {
       </AnimatePresence>
 
       {/* Global progress bar */}
-      {screen !== 'title' && screen !== 'end' && (
+      {showNavBar && (
         <div className="fixed bottom-0 left-0 right-0 h-1 bg-gray-200 z-50">
           <motion.div
             className="h-full bg-violet-500"

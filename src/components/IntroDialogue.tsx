@@ -2,16 +2,23 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { INTRO_LINES } from '../data/scenario1';
 
+interface IntroLine {
+  emoji: string;
+  text: string;
+}
+
 interface Props {
+  lines?: IntroLine[];
   onComplete: () => void;
 }
 
-export default function IntroDialogue({ onComplete }: Props) {
+export default function IntroDialogue({ lines: propLines, onComplete }: Props) {
+  const lines = propLines ?? INTRO_LINES;
   const [lineIndex, setLineIndex] = useState(0);
 
-  const current = INTRO_LINES[lineIndex];
-  const isLast = lineIndex === INTRO_LINES.length - 1;
-  const progress = ((lineIndex + 1) / INTRO_LINES.length) * 100;
+  const current = lines[lineIndex];
+  const isLast = lineIndex === lines.length - 1;
+  const progress = ((lineIndex + 1) / lines.length) * 100;
 
   function advance() {
     if (isLast) {
@@ -34,7 +41,7 @@ export default function IntroDialogue({ onComplete }: Props) {
       <div className="w-full max-w-sm mb-8">
         <div className="flex items-center justify-between mb-2">
           <span className="text-xs font-bold text-gray-400 uppercase tracking-wider">Story</span>
-          <span className="text-xs text-gray-400">{lineIndex + 1} / {INTRO_LINES.length}</span>
+          <span className="text-xs text-gray-400">{lineIndex + 1} / {lines.length}</span>
         </div>
         <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
           <motion.div
@@ -81,7 +88,7 @@ export default function IntroDialogue({ onComplete }: Props) {
 
         {/* Dot indicators */}
         <div className="flex justify-center gap-1.5 mb-5">
-          {INTRO_LINES.map((_, i) => (
+          {lines.map((_, i) => (
             <button
               key={i}
               onClick={() => setLineIndex(i)}
