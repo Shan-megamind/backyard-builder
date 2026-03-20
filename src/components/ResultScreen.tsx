@@ -1,25 +1,39 @@
 import { motion } from 'framer-motion';
-import { getOutcomeData, SCENARIO_CONCEPTS, SCENARIO_EMOJIS } from '../data/index';
+import { getOutcomeData, getScenarioConcepts, getScenarioEmojis, calcOutcomeScore } from '../data/index';
+import type { QuestId } from '../types';
 
 interface Props {
+  questId: QuestId;
   scenarioId: number;
   outcomeKey: string;
   totalScenarios: number;
+  isRedoMode?: boolean;
   onReplay: () => void;
   onContinue: () => void;
   onRestart: () => void;
 }
 
 export default function ResultScreen({
+  questId,
   scenarioId,
   outcomeKey,
   totalScenarios,
+  isRedoMode = false,
   onReplay,
   onContinue,
   onRestart,
 }: Props) {
-  const data = getOutcomeData(scenarioId, outcomeKey);
+  const data = getOutcomeData(questId, scenarioId, outcomeKey);
+  const scenarioConcepts = getScenarioConcepts(questId);
+  const scenarioEmojis = getScenarioEmojis(questId);
   const isLastScenario = scenarioId === totalScenarios;
+  const score = calcOutcomeScore(data);
+
+  const scoreStyle =
+    score === 100 ? 'bg-emerald-100 text-emerald-700 border-emerald-200' :
+    score >= 75   ? 'bg-teal-100 text-teal-700 border-teal-200' :
+    score >= 55   ? 'bg-amber-100 text-amber-700 border-amber-200' :
+                    'bg-red-100 text-red-700 border-red-200';
 
   const gradients: Record<string, string> = {
     true: 'from-emerald-50 via-green-50 to-teal-50',
@@ -44,7 +58,7 @@ export default function ResultScreen({
         className="text-center mb-5"
       >
         <div className="inline-flex items-center gap-2 bg-white border border-gray-200 text-gray-500 text-xs font-bold uppercase tracking-widest px-4 py-1.5 rounded-full mb-4 shadow-sm">
-          <span>{SCENARIO_EMOJIS[scenarioId]}</span>
+          <span>{scenarioEmojis[scenarioId]}</span>
           Scenario {scenarioId} of {totalScenarios} — Results
         </div>
 
@@ -58,15 +72,25 @@ export default function ResultScreen({
           {data.emoji}
         </motion.div>
 
-        {/* Label */}
-        <motion.span
-          initial={{ opacity: 0, scale: 0.85 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.2 }}
-          className={`inline-block px-5 py-2.5 rounded-2xl font-bold text-lg shadow-sm ${data.labelStyle}`}
-        >
-          {data.label}
-        </motion.span>
+        {/* Label + score */}
+        <div className="flex items-center justify-center gap-3 flex-wrap">
+          <motion.span
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.2 }}
+            className={`inline-block px-5 py-2.5 rounded-2xl font-bold text-lg shadow-sm ${data.labelStyle}`}
+          >
+            {data.label}
+          </motion.span>
+          <motion.span
+            initial={{ opacity: 0, scale: 0.85 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.25 }}
+            className={`inline-block px-4 py-2.5 rounded-2xl font-black text-lg border ${scoreStyle}`}
+          >
+            {score}pts
+          </motion.span>
+        </div>
       </motion.div>
 
       {/* Content cards */}
@@ -132,8 +156,8 @@ export default function ResultScreen({
           )}
         </motion.div>
 
-        {/* Next-up teaser (for non-final scenarios) */}
-        {!isLastScenario && (
+        {/* Next-up teaser (for non-final scenarios, not in redo mode) */}
+        {!isLastScenario && !isRedoMode && (
           <motion.div
             {...d(5)}
             className="bg-violet-50 border-2 border-violet-200 rounded-3xl p-4 text-center"
@@ -142,10 +166,10 @@ export default function ResultScreen({
               Up next
             </div>
             <div className="font-bold text-violet-800">
-              {SCENARIO_EMOJIS[scenarioId + 1]} Scenario {scenarioId + 1} of {totalScenarios}
+              {scenarioEmojis[scenarioId + 1]} Scenario {scenarioId + 1} of {totalScenarios}
             </div>
             <div className="text-sm text-violet-600 mt-0.5 font-medium">
-              {SCENARIO_CONCEPTS[scenarioId + 1]}
+              {scenarioConcepts[scenarioId + 1]}
             </div>
           </motion.div>
         )}
@@ -162,13 +186,17 @@ export default function ResultScreen({
             onClick={onReplay}
             className="flex-1 bg-white hover:bg-gray-50 active:scale-[0.98] text-gray-700 font-semibold py-3 rounded-2xl shadow border border-gray-200 transition-all hover:scale-[1.02] cursor-pointer text-sm"
           >
-            ← Try again
+            ↺ Redo
           </button>
           <button
             onClick={onContinue}
             className="flex-[2] bg-violet-600 hover:bg-violet-700 active:scale-[0.98] text-white font-bold py-3 rounded-2xl shadow-lg shadow-violet-200 transition-all hover:scale-[1.02] cursor-pointer text-sm"
           >
-            {isLastScenario ? 'See final results →' : `Continue to Scenario ${scenarioId + 1} →`}
+            {isRedoMode
+              ? 'Back to Summary →'
+              : isLastScenario
+              ? 'See final results →'
+              : `Continue to Scenario ${scenarioId + 1} →`}
           </button>
         </motion.div>
       </div>

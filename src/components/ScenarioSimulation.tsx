@@ -1,22 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { ScenarioConfig } from '../types';
-import { getOutcomeData } from '../data/index';
+import type { ScenarioConfig, QuestId, GenericOutcome } from '../types';
 
 interface Props {
   scenario: ScenarioConfig;
   optionId: string;
+  questId: QuestId;
   onComplete: () => void;
 }
 
 type SimPhase = 'idle' | 'running' | 'done';
 
-export default function ScenarioSimulation({ scenario, optionId, onComplete }: Props) {
+export default function ScenarioSimulation({ scenario, optionId, questId, onComplete }: Props) {
   const [phase, setPhase] = useState<SimPhase>('idle');
   const [showResults, setShowResults] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
-  const outcome = getOutcomeData(scenario.id, optionId);
+  const outcome = scenario.outcomes[optionId]!;
   const selectedOption = scenario.options.find(o => o.id === optionId)!;
 
   useEffect(() => {
@@ -88,6 +88,7 @@ export default function ScenarioSimulation({ scenario, optionId, onComplete }: P
         <div className="flex-1 flex items-center justify-center relative overflow-hidden">
           <ScenarioVisual
             scenarioId={scenario.id}
+            questId={questId}
             optionId={optionId}
             phase={phase}
             outcome={outcome}
@@ -170,15 +171,28 @@ export default function ScenarioSimulation({ scenario, optionId, onComplete }: P
 
 function ScenarioVisual({
   scenarioId,
+  questId,
   optionId,
   phase,
   outcome,
 }: {
   scenarioId: number;
+  questId: QuestId;
   optionId: string;
   phase: SimPhase;
-  outcome: ReturnType<typeof getOutcomeData>;
+  outcome: GenericOutcome;
 }) {
+  if (questId === 'amazon') {
+    switch (scenarioId) {
+      case 1: return <InventoryVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
+      case 2: return <ProductSearchVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
+      case 3: return <CheckoutVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
+      case 4: return <QueueDispatchVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
+      case 5: return <SaleTrafficVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
+      case 6: return <TrackingVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
+      default: return null;
+    }
+  }
   switch (scenarioId) {
     case 2: return <CdnVisual optionId={optionId} phase={phase} />;
     case 3: return <SearchVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
@@ -830,6 +844,720 @@ function PipelineVisual({ optionId, phase }: { optionId: string; phase: SimPhase
           </motion.div>
         )}
       </AnimatePresence>
+    </div>
+  );
+}
+
+// ── Visual: Inventory Race (Amazon Scenario 1) ────────────────────────────────
+
+type BuyerStatus = 'idle' | 'buying' | 'confirmed' | 'rejected';
+
+function InventoryVisual({ optionId, phase }: { optionId: string; phase: SimPhase; isGood: boolean }) {
+  const [aliceStatus, setAliceStatus] = useState<BuyerStatus>('idle');
+  const [bobStatus, setBobStatus] = useState<BuyerStatus>('idle');
+  const [inventory, setInventory] = useState(1);
+  const [locked, setLocked] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const isReserve = optionId === 'reserve-item';
+  const isQueue = optionId === 'queue-orders';
+
+  useEffect(() => {
+    if (phase !== 'running') return;
+
+    function t(ms: number, fn: () => void) {
+      const id = setTimeout(fn, ms);
+      timerRef.current.push(id);
+    }
+
+    // Both start buying simultaneously
+    t(400, () => { setAliceStatus('buying'); setBobStatus('buying'); });
+
+    if (isReserve) {
+      // Alice wins the lock
+      t(900, () => setLocked(true));
+      t(1400, () => { setAliceStatus('confirmed'); setInventory(0); });
+      t(1900, () => setBobStatus('rejected'));
+    } else if (isQueue) {
+      // Serialize: Alice first, then Bob gets rejected
+      t(1000, () => setBobStatus('idle')); // Bob waits in queue
+      t(1400, () => { setAliceStatus('confirmed'); setInventory(0); });
+      t(2200, () => { setBobStatus('buying'); });
+      t(2800, () => setBobStatus('rejected'));
+    } else {
+      // Race condition: both confirm, oversell
+      t(1200, () => { setAliceStatus('confirmed'); setBobStatus('confirmed'); setInventory(-1); });
+    }
+
+    return () => timerRef.current.forEach(clearTimeout);
+  }, [phase]);
+
+  const statusColor = (s: BuyerStatus) => {
+    if (s === 'confirmed') return 'border-green-500 bg-green-900/30';
+    if (s === 'rejected') return 'border-red-500 bg-red-900/30';
+    if (s === 'buying') return 'border-yellow-500 bg-yellow-900/20';
+    return 'border-gray-700 bg-gray-800';
+  };
+
+  const statusLabel = (s: BuyerStatus, name: string) => {
+    if (s === 'confirmed') return <span className="text-green-400 font-bold text-xs">✅ Order Confirmed!</span>;
+    if (s === 'rejected') return <span className="text-red-400 font-bold text-xs">❌ Out of Stock</span>;
+    if (s === 'buying') return <span className="text-yellow-300 font-bold text-xs">🖱️ Clicking Buy…</span>;
+    return <span className="text-gray-500 text-xs">{name} waiting…</span>;
+  };
+
+  const inventoryColor = inventory < 0 ? 'text-red-400' : inventory === 0 ? 'text-yellow-400' : 'text-green-400';
+
+  return (
+    <div className="flex flex-col items-center gap-6 w-full max-w-md px-6">
+      {/* Inventory counter */}
+      <div className="bg-gray-800 border-2 border-gray-700 rounded-2xl p-4 text-center w-48">
+        <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">🛒 Shop Machine</div>
+        <div className="text-xs text-gray-400 mb-2">Inventory</div>
+        <motion.div
+          animate={inventory < 0 ? { scale: [1, 1.3, 1] } : {}}
+          transition={{ duration: 0.4 }}
+          className={`text-4xl font-black ${inventoryColor}`}
+        >
+          {inventory}
+        </motion.div>
+        <div className="text-xs text-gray-500 mt-1">
+          {inventory > 0 ? 'item left' : inventory === 0 ? 'sold out' : '⚠️ oversold!'}
+        </div>
+        {locked && isReserve && (
+          <motion.div
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            className="mt-2 text-xs font-bold text-amber-300 bg-amber-900/40 border border-amber-700/60 rounded-lg px-2 py-1"
+          >
+            🔒 Locked
+          </motion.div>
+        )}
+        {isQueue && phase === 'running' && (
+          <div className="mt-2 text-xs text-violet-300 font-bold">📋 Queue active</div>
+        )}
+      </div>
+
+      {/* Two buyers */}
+      <div className="flex gap-4 w-full justify-center">
+        {([['👧', 'Alice', aliceStatus] as const, ['👦', 'Bob', bobStatus] as const]).map(([emoji, name, status]) => (
+          <motion.div
+            key={name}
+            animate={status === 'buying' ? { y: [0, -4, 0] } : {}}
+            transition={{ repeat: Infinity, duration: 0.5 }}
+            className={`flex-1 border-2 rounded-2xl p-4 text-center transition-colors ${statusColor(status)}`}
+          >
+            <div className="text-3xl mb-2">{emoji}</div>
+            <div className="text-sm font-bold text-white mb-1">{name}</div>
+            {statusLabel(status, name)}
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="text-xs text-center">
+        {phase === 'idle' && <span className="text-gray-500">Both kids are about to click Buy at the same time…</span>}
+        {phase === 'running' && aliceStatus === 'buying' && bobStatus === 'buying' && (
+          <span className="text-yellow-300 font-bold">⚡ Both clicking at the exact same moment!</span>
+        )}
+        {aliceStatus === 'confirmed' && bobStatus === 'confirmed' && (
+          <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-red-400 font-bold">
+            🔴 Both confirmed — but only 1 item existed. Oversold!
+          </motion.span>
+        )}
+        {isReserve && bobStatus === 'rejected' && (
+          <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-green-400 font-bold">
+            ✅ Lock prevented the race — only one order succeeded.
+          </motion.span>
+        )}
+        {isQueue && bobStatus === 'rejected' && (
+          <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-violet-300 font-bold">
+            ✅ Queue serialized requests — no oversell, but slower.
+          </motion.span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Visual: Product Search (Amazon Scenario 2) ────────────────────────────────
+
+function ProductSearchVisual({ optionId, phase }: { optionId: string; phase: SimPhase; isGood: boolean }) {
+  const [scanIndex, setScanIndex] = useState(-1);
+  const [found, setFound] = useState(false);
+  const scanRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isScan = optionId === 'keep-scanning';
+  const isCatalog = optionId === 'name-catalog';
+  const isIndex = optionId === 'attribute-index';
+
+  const GRID = 40;
+  const TARGET = 26;
+
+  useEffect(() => {
+    if (phase !== 'running') return;
+    if (isScan) {
+      let i = 0;
+      scanRef.current = setInterval(() => {
+        setScanIndex(i);
+        if (i === TARGET) { setFound(true); clearInterval(scanRef.current!); }
+        i++;
+        if (i > GRID) clearInterval(scanRef.current!);
+      }, 120);
+    } else if (isCatalog) {
+      setTimeout(() => setScanIndex(Math.floor(GRID * 0.4)), 400);
+      setTimeout(() => setScanIndex(Math.floor(GRID * 0.65)), 700);
+      setTimeout(() => { setScanIndex(TARGET); setFound(true); }, 1100);
+    } else {
+      setTimeout(() => { setScanIndex(TARGET); setFound(true); }, 250);
+    }
+    return () => { if (scanRef.current) clearInterval(scanRef.current); };
+  }, [phase]);
+
+  const PRODUCT_ICONS = ['🚲','👟','🎮','📱','🧸','🎒','🖥️','🎸'];
+
+  return (
+    <div className="flex flex-col items-center gap-4 w-full max-w-xl px-8">
+      <div className="bg-gray-800 rounded-2xl px-4 py-3 flex items-center gap-3 w-full border border-gray-700">
+        <span className="text-gray-400">🔍</span>
+        <span className="text-gray-300 font-mono text-sm">
+          &quot;red bike under $50&quot;
+          {phase === 'running' && !found && (
+            <motion.span animate={{ opacity: [1, 0, 1] }} transition={{ repeat: Infinity, duration: 0.6 }}>|</motion.span>
+          )}
+        </span>
+        {found && (
+          <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="ml-auto text-green-400 font-bold text-sm">
+            ✓ Found!
+          </motion.span>
+        )}
+      </div>
+
+      <div className="grid gap-1 w-full" style={{ gridTemplateColumns: 'repeat(8, 1fr)' }}>
+        {Array.from({ length: GRID }).map((_, i) => {
+          const isTarget = i === TARGET;
+          const isScanning = isScan && i <= scanIndex && !isTarget;
+          const isHighlighted = i === scanIndex && !isTarget && !isScan;
+          return (
+            <motion.div
+              key={i}
+              animate={
+                isTarget && found ? { scale: [1, 1.3, 1], backgroundColor: '#10b981' }
+                : isHighlighted ? { backgroundColor: '#7c3aed', scale: 1.1 }
+                : isScanning ? { backgroundColor: '#374151' }
+                : {}
+              }
+              transition={{ duration: 0.15 }}
+              className="rounded-md aspect-square flex items-center justify-center text-sm"
+              style={{ backgroundColor: isTarget && found ? '#10b981' : '#1f2937' }}
+            >
+              {isTarget && found ? PRODUCT_ICONS[0] : '▪'}
+            </motion.div>
+          );
+        })}
+      </div>
+
+      <div className="text-center text-sm">
+        {phase === 'idle' && <span className="text-gray-500">Ready to search 100,000 products…</span>}
+        {phase === 'running' && !found && isScan && (
+          <span className="text-red-400">Checking product #{scanIndex + 1} of 100,000…</span>
+        )}
+        {phase === 'running' && !found && (isCatalog || isIndex) && (
+          <span className="text-violet-300">{isIndex ? 'Looking up "red", "bike", "under $50" in index…' : 'Jumping to B section…'}</span>
+        )}
+        {found && (
+          <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-green-400 font-bold">
+            {isIndex ? '🤖 Found instantly via attribute index! ⚡' : isCatalog ? '📖 Found via catalog — but only exact names work' : `🐌 Found after scanning ${TARGET + 1} products`}
+          </motion.span>
+        )}
+      </div>
+
+      <div className="text-xs text-gray-600 text-center">
+        {isScan && 'Each square = ~2,500 products. Full scan = 100,000 checks.'}
+        {isCatalog && 'Alphabetical index — fast for exact name, slow for attributes.'}
+        {isIndex && 'Inverted index maps "red", "bike", "$50" directly to matching products.'}
+      </div>
+    </div>
+  );
+}
+
+// ── Visual: Checkout Orchestration (Amazon Scenario 3) ────────────────────────
+
+type StepStatus = 'idle' | 'running' | 'done' | 'failed' | 'rolling-back' | 'rolled-back';
+
+function CheckoutVisual({ optionId, phase }: { optionId: string; phase: SimPhase; isGood: boolean }) {
+  const [steps, setSteps] = useState<StepStatus[]>(['idle', 'idle', 'idle']);
+  const timerRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const isMonolith = optionId === 'single-machine';
+  const isSplit = optionId === 'split-no-coord';
+  const isSaga = optionId === 'checkout-saga';
+
+  function t(ms: number, fn: () => void) {
+    const id = setTimeout(fn, ms);
+    timerRef.current.push(id);
+  }
+
+  useEffect(() => {
+    if (phase !== 'running') return;
+
+    if (isMonolith) {
+      t(400, () => setSteps(['running', 'idle', 'idle']));
+      t(900, () => setSteps(['done', 'running', 'idle']));
+      t(1400, () => setSteps(['done', 'failed', 'idle']));
+      t(1900, () => setSteps(['failed', 'failed', 'failed'])); // cascade
+    } else if (isSplit) {
+      // All start simultaneously (no coordination)
+      t(400, () => setSteps(['running', 'running', 'running']));
+      t(1000, () => setSteps(['done', 'failed', 'running']));
+      t(1600, () => setSteps(['done', 'failed', 'done'])); // inconsistent state
+    } else {
+      // Saga: sequential with rollback on failure
+      t(400, () => setSteps(['running', 'idle', 'idle']));
+      t(900, () => setSteps(['done', 'running', 'idle']));
+      t(1400, () => setSteps(['done', 'done', 'running']));
+      t(1900, () => setSteps(['done', 'done', 'done']));
+    }
+
+    return () => timerRef.current.forEach(clearTimeout);
+  }, [phase]);
+
+  const STEP_LABELS = ['Reserve Inventory', 'Charge Card', 'Confirm Order'];
+  const STEP_ICONS = ['📦', '💳', '✅'];
+
+  const stepColor = (s: StepStatus) => {
+    if (s === 'done') return 'border-green-500 bg-green-900/30 text-green-300';
+    if (s === 'failed' || s === 'rolled-back') return 'border-red-500 bg-red-900/30 text-red-300';
+    if (s === 'rolling-back') return 'border-yellow-500 bg-yellow-900/20 text-yellow-300';
+    if (s === 'running') return 'border-violet-500 bg-violet-900/30 text-violet-300';
+    return 'border-gray-700 bg-gray-800 text-gray-500';
+  };
+
+  const stepIcon = (s: StepStatus, icon: string) => {
+    if (s === 'done') return '✓';
+    if (s === 'failed') return '✗';
+    if (s === 'rolling-back') return '↩';
+    if (s === 'rolled-back') return '↩';
+    if (s === 'running') return (
+      <motion.span animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 1, ease: 'linear' }}>⚙</motion.span>
+    );
+    return icon;
+  };
+
+  const statusNote = () => {
+    if (isMonolith && steps[1] === 'failed') return { text: '💥 Card failed — inventory already gone. No rollback.', color: 'text-red-400' };
+    if (isSplit && steps[1] === 'failed' && steps[2] === 'done') return { text: '⚠️ Card failed but order still "confirmed". Broken state.', color: 'text-amber-400' };
+    if (isSaga && steps[2] === 'done') return { text: '✅ All steps complete. Any failure would have triggered rollback.', color: 'text-green-400' };
+    return null;
+  };
+
+  const note = statusNote();
+
+  return (
+    <div className="flex flex-col items-center gap-5 w-full max-w-lg px-4">
+      {isSaga && (
+        <div className="bg-violet-900/30 border border-violet-700/50 rounded-xl px-4 py-2 text-xs text-violet-300 font-bold">
+          🎼 Checkout Conductor orchestrating…
+        </div>
+      )}
+
+      <div className="flex items-center gap-2 w-full">
+        {steps.map((s, i) => (
+          <div key={i} className="flex items-center flex-1">
+            <motion.div
+              animate={s === 'failed' ? { x: [0, -4, 4, -4, 0] } : {}}
+              transition={{ duration: 0.3 }}
+              className={`flex-1 border-2 rounded-2xl p-3 text-center transition-colors ${stepColor(s)}`}
+            >
+              <div className="text-2xl mb-1">{stepIcon(s, STEP_ICONS[i])}</div>
+              <div className="text-xs font-bold leading-tight">{STEP_LABELS[i]}</div>
+              <div className="text-xs mt-1 opacity-70">{s === 'idle' ? 'Waiting' : s === 'running' ? 'In progress' : s.charAt(0).toUpperCase() + s.slice(1)}</div>
+            </motion.div>
+            {i < 2 && (
+              <div className={`text-lg px-1 shrink-0 ${isSaga ? 'text-violet-500' : 'text-gray-600'}`}>→</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      {note && (
+        <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className={`text-sm font-bold text-center ${note.color}`}>
+          {note.text}
+        </motion.div>
+      )}
+
+      <div className="text-xs text-gray-600 text-center">
+        {isMonolith && 'One system handles all steps — one failure corrupts everything.'}
+        {isSplit && 'Three separate systems, no coordinator — each can succeed or fail independently.'}
+        {isSaga && 'Conductor runs each step in order. Failure at any step triggers automatic rollback.'}
+      </div>
+    </div>
+  );
+}
+
+// ── Visual: Queue Dispatch (Amazon Scenario 4) ────────────────────────────────
+
+const DOWNSTREAM = [
+  { label: 'Warehouse', icon: '🏭' },
+  { label: 'Inventory', icon: '📦' },
+  { label: 'Email', icon: '📧' },
+  { label: 'Analytics', icon: '📊' },
+  { label: 'Fulfillment', icon: '🚚' },
+];
+
+type DeliveryStatus = 'pending' | 'sent' | 'delivered' | 'lost' | 'retrying' | 'queued';
+
+function QueueDispatchVisual({ optionId, phase }: { optionId: string; phase: SimPhase; isGood: boolean }) {
+  const [orderDone, setOrderDone] = useState(false);
+  const [statuses, setStatuses] = useState<DeliveryStatus[]>(DOWNSTREAM.map(() => 'pending'));
+  const timerRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const isSync = optionId === 'sync-all';
+  const isFireForget = optionId === 'fire-forget';
+  const isQueue = optionId === 'reliable-queue';
+
+  function t(ms: number, fn: () => void) {
+    const id = setTimeout(fn, ms);
+    timerRef.current.push(id);
+  }
+  function setStatus(i: number, s: DeliveryStatus) {
+    setStatuses(prev => { const n = [...prev]; n[i] = s; return n; });
+  }
+
+  useEffect(() => {
+    if (phase !== 'running') return;
+
+    if (isSync) {
+      // Order waits for all — slow, one fails
+      DOWNSTREAM.forEach((_, i) => {
+        t(600 + i * 700, () => setStatus(i, 'sent'));
+        const fail = i === 2; // email fails
+        t(1000 + i * 700, () => setStatus(i, fail ? 'lost' : 'delivered'));
+      });
+      t(600 + 4 * 700 + 400, () => setOrderDone(false)); // never completes
+    } else if (isFireForget) {
+      // Confirm immediately, fire messages
+      t(400, () => setOrderDone(true));
+      DOWNSTREAM.forEach((_, i) => {
+        t(500 + i * 200, () => setStatus(i, 'sent'));
+        const lost = i === 0 || i === 3; // warehouse and analytics lost
+        t(900 + i * 200, () => setStatus(i, lost ? 'lost' : 'delivered'));
+      });
+    } else {
+      // Confirm immediately, queue everything
+      t(400, () => setOrderDone(true));
+      DOWNSTREAM.forEach((_, i) => {
+        t(500 + i * 150, () => setStatus(i, 'queued'));
+        const slow = i === 0; // warehouse is slow → retries
+        t(900 + i * 350, () => setStatus(i, slow ? 'retrying' : 'delivered'));
+        if (slow) t(1800, () => setStatus(i, 'delivered'));
+      });
+    }
+
+    return () => timerRef.current.forEach(clearTimeout);
+  }, [phase]);
+
+  const statusStyle = (s: DeliveryStatus) => {
+    if (s === 'delivered') return 'bg-green-900/40 border-green-600 text-green-300';
+    if (s === 'lost') return 'bg-red-900/40 border-red-600 text-red-300';
+    if (s === 'retrying') return 'bg-yellow-900/30 border-yellow-600 text-yellow-300';
+    if (s === 'queued') return 'bg-violet-900/30 border-violet-600 text-violet-300';
+    if (s === 'sent') return 'bg-sky-900/30 border-sky-600 text-sky-300';
+    return 'bg-gray-800 border-gray-700 text-gray-500';
+  };
+
+  const statusLabel = (s: DeliveryStatus) => {
+    if (s === 'delivered') return '✓ Delivered';
+    if (s === 'lost') return '✗ Lost';
+    if (s === 'retrying') return '↻ Retrying…';
+    if (s === 'queued') return '⏳ Queued';
+    if (s === 'sent') return '→ Sent';
+    return '…';
+  };
+
+  return (
+    <div className="flex items-start gap-4 w-full max-w-2xl px-4">
+      {/* Order */}
+      <div className="shrink-0 flex flex-col items-center gap-2">
+        <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-1">Order</div>
+        <div className="bg-gray-800 border-2 border-gray-600 rounded-2xl p-3 text-center w-20">
+          <div className="text-2xl mb-1">🛒</div>
+          <div className="text-xs text-gray-300 font-bold">Order #42</div>
+          {orderDone ? (
+            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-xs text-green-400 font-bold mt-1">✅ Done</motion.div>
+          ) : isSync && phase === 'running' ? (
+            <motion.div animate={{ opacity: [1, 0.3, 1] }} transition={{ repeat: Infinity, duration: 0.7 }} className="text-xs text-yellow-400 mt-1">Waiting…</motion.div>
+          ) : (
+            <div className="text-xs text-gray-600 mt-1">Pending</div>
+          )}
+        </div>
+      </div>
+
+      {/* Arrow + optional queue */}
+      <div className="flex flex-col items-center justify-center self-center gap-1">
+        <div className="text-gray-600 text-xl">→</div>
+        {isQueue && (
+          <div className="bg-violet-900/40 border border-violet-700 rounded-xl px-2 py-1 text-xs text-violet-300 font-bold text-center">
+            📮 Queue
+          </div>
+        )}
+        <div className="text-gray-600 text-xl">→</div>
+      </div>
+
+      {/* Downstream systems */}
+      <div className="flex-1 flex flex-col gap-1.5">
+        <div className="text-xs text-gray-500 font-bold uppercase tracking-wider mb-0.5">Downstream Systems</div>
+        {DOWNSTREAM.map((sys, i) => (
+          <motion.div
+            key={sys.label}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.1 + i * 0.05 }}
+            className={`flex items-center gap-2 border rounded-xl px-2.5 py-1.5 text-xs transition-colors ${statusStyle(statuses[i])}`}
+          >
+            <span>{sys.icon}</span>
+            <span className="font-bold flex-1">{sys.label}</span>
+            <span className="font-bold">{statusLabel(statuses[i])}</span>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Visual: Sale Traffic (Amazon Scenario 5) ──────────────────────────────────
+
+function SaleTrafficVisual({ optionId, phase }: { optionId: string; phase: SimPhase; isGood: boolean }) {
+  const [tick, setTick] = useState(0);
+  const [crashed, setCrashed] = useState(false);
+  const [serverCount, setServerCount] = useState(1);
+
+  const isBigger = optionId === 'bigger-servers';
+  const isCache = optionId === 'hot-cache';
+  const isProtect = optionId === 'full-protection';
+
+  useEffect(() => {
+    if (phase !== 'running') return;
+    const interval = setInterval(() => setTick(t => t + 1), 400);
+    return () => clearInterval(interval);
+  }, [phase]);
+
+  useEffect(() => {
+    if (isBigger && phase === 'running' && tick > 7) setCrashed(true);
+    if (isProtect && phase === 'running' && tick > 4) setServerCount(Math.min(4, 1 + Math.floor((tick - 4) / 2)));
+  }, [tick, phase]);
+
+  const bars = Array.from({ length: 12 }).map((_, i) => {
+    if (i >= tick) return 0;
+    return i < 3 ? (i + 1) / 3 * 0.2 : Math.min(1, 0.2 + ((i - 3) / 9) * 0.85);
+  });
+
+  const cacheHit = isCache || isProtect;
+  const circuitOpen = isProtect && tick > 5;
+
+  return (
+    <div className="flex flex-col items-center gap-4 w-full max-w-xl px-6">
+      <div className="w-full">
+        <div className="text-xs text-gray-500 mb-2 flex justify-between">
+          <span>Requests/sec</span>
+          <span className="text-red-400 font-bold">Sale starts →</span>
+        </div>
+        <div className="flex items-end gap-0.5 h-20 bg-gray-900 border border-gray-800 rounded-xl p-2">
+          {bars.map((h, i) => (
+            <motion.div
+              key={i}
+              className={`flex-1 rounded-t ${
+                crashed && i >= 7 ? 'bg-red-700'
+                : cacheHit ? 'bg-green-600'
+                : 'bg-violet-600'
+              }`}
+              initial={{ height: 0 }}
+              animate={{ height: `${h * 100}%` }}
+              transition={{ duration: 0.3 }}
+            />
+          ))}
+        </div>
+      </div>
+
+      <div className="flex gap-3 w-full">
+        {/* Servers */}
+        <div className="flex-1 bg-gray-800 border-2 border-gray-700 rounded-2xl p-3 text-center">
+          {crashed ? (
+            <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-3xl">💥</motion.div>
+          ) : (
+            <div className="flex justify-center gap-1">
+              {Array.from({ length: isProtect ? serverCount : 1 }).map((_, i) => (
+                <motion.div key={i} initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-2xl">🖥️</motion.div>
+              ))}
+            </div>
+          )}
+          <div className="text-xs text-gray-400 font-bold mt-1">{isProtect ? `${serverCount} Server${serverCount > 1 ? 's' : ''}` : 'Origin Server'}</div>
+          <div className={`text-xs mt-0.5 font-bold ${crashed ? 'text-red-400' : isBigger ? 'text-amber-400' : 'text-green-400'}`}>
+            {crashed ? 'CRASHED' : isProtect ? 'Autoscaling ✅' : isCache ? 'Protected ✅' : 'Under pressure'}
+          </div>
+        </div>
+
+        {/* Cache panel */}
+        {cacheHit && (
+          <div className="flex-1 bg-emerald-900/30 border border-emerald-700/60 rounded-2xl p-3 text-center">
+            <div className="text-3xl mb-1">🗄️</div>
+            <div className="text-xs text-emerald-300 font-bold">Hot Cache</div>
+            <div className="text-xs text-green-400 mt-1">{tick > 3 ? '90% hit rate ✅' : 'Pre-warming…'}</div>
+          </div>
+        )}
+
+        {/* Circuit breaker */}
+        {isProtect && (
+          <div className={`flex-1 rounded-2xl p-3 text-center border ${circuitOpen ? 'bg-amber-900/30 border-amber-700/60' : 'bg-gray-800 border-gray-700'}`}>
+            <div className="text-3xl mb-1">🛡️</div>
+            <div className={`text-xs font-bold ${circuitOpen ? 'text-amber-300' : 'text-gray-400'}`}>Circuit Breaker</div>
+            <div className={`text-xs mt-1 font-bold ${circuitOpen ? 'text-amber-400' : 'text-gray-500'}`}>{circuitOpen ? 'Shedding analytics' : 'Monitoring'}</div>
+          </div>
+        )}
+
+        {isBigger && (
+          <div className="flex-1 bg-amber-900/30 border border-amber-700/40 rounded-2xl p-3 text-center">
+            <div className="text-3xl mb-1">💪</div>
+            <div className="text-xs text-amber-300 font-bold">Bigger Server</div>
+            <div className={`text-xs mt-1 font-bold ${crashed ? 'text-red-400' : 'text-amber-400'}`}>{crashed ? 'Still crashed' : 'Handling…'}</div>
+          </div>
+        )}
+      </div>
+
+      <div className="text-xs text-gray-500 text-center">
+        {isBigger && '💥 More power helps briefly — 50× surge is still too much'}
+        {isCache && '✅ Cache absorbs 90% of reads — DB stays protected'}
+        {isProtect && '✅ Cache + autoscale + circuit breaker — all orders protected'}
+      </div>
+    </div>
+  );
+}
+
+// ── Visual: Order Tracking (Amazon Scenario 6) ────────────────────────────────
+
+const ORDER_STAGES = [
+  { label: 'Order Confirmed', icon: '✅' },
+  { label: 'Processing', icon: '⚙️' },
+  { label: 'Shipped', icon: '🚚' },
+  { label: 'Out for Delivery', icon: '📦' },
+  { label: 'Delivered', icon: '🏠' },
+];
+
+function TrackingVisual({ optionId, phase }: { optionId: string; phase: SimPhase; isGood: boolean }) {
+  const [activeStage, setActiveStage] = useState(-1);
+  const [staleness, setStaleness] = useState<string | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  const isManual = optionId === 'manual-checks';
+  const isBatch = optionId === 'hourly-batch';
+  const isEvent = optionId === 'event-stream';
+
+  function t(ms: number, fn: () => void) {
+    const id = setTimeout(fn, ms);
+    timerRef.current.push(id);
+  }
+
+  useEffect(() => {
+    if (phase !== 'running') return;
+
+    if (isEvent) {
+      ORDER_STAGES.forEach((_, i) => {
+        t(300 + i * 700, () => setActiveStage(i));
+      });
+    } else if (isBatch) {
+      // Updates come in batches, some stages missed
+      t(400, () => setActiveStage(0));
+      t(1200, () => { setActiveStage(2); setStaleness('~58 min gap'); }); // skipped stage 1
+      t(2400, () => { setActiveStage(4); setStaleness('~61 min gap'); }); // skipped stages 3
+    } else {
+      // Manual: very slow updates
+      t(600, () => setActiveStage(0));
+      t(2000, () => setActiveStage(1));
+      // stages 2-4 never arrive in time
+    }
+
+    return () => timerRef.current.forEach(clearTimeout);
+  }, [phase]);
+
+  return (
+    <div className="flex flex-col items-center gap-4 w-full max-w-sm px-4">
+      <div className="text-xs text-gray-500 font-bold uppercase tracking-wider self-start">Order #42 Status</div>
+
+      {ORDER_STAGES.map((stage, i) => {
+        const isActive = i <= activeStage;
+        const isCurrent = i === activeStage;
+        const isMissed = isBatch && activeStage > i + 1 && (i === 1 || i === 3);
+
+        return (
+          <div key={stage.label} className="flex items-center gap-3 w-full">
+            {/* Line above */}
+            {i > 0 && (
+              <div className="w-4 shrink-0 flex justify-center">
+                <motion.div
+                  animate={{ backgroundColor: isActive ? '#8b5cf6' : '#374151' }}
+                  className="w-0.5 h-4 -mt-4"
+                  style={{ backgroundColor: '#374151' }}
+                />
+              </div>
+            )}
+            {i === 0 && <div className="w-4 shrink-0" />}
+
+            <motion.div
+              animate={
+                isActive
+                  ? { borderColor: '#8b5cf6', backgroundColor: 'rgba(109, 40, 217, 0.2)' }
+                  : {}
+              }
+              className={`flex-1 flex items-center gap-2 border-2 rounded-xl px-3 py-2 transition-colors ${
+                isActive ? 'border-violet-500' : 'border-gray-700 bg-gray-800/40'
+              }`}
+            >
+              <motion.span
+                animate={isCurrent && isEvent ? { scale: [1, 1.3, 1] } : {}}
+                transition={{ duration: 0.4 }}
+                className="text-lg"
+              >
+                {stage.icon}
+              </motion.span>
+              <div className="flex-1">
+                <div className={`text-xs font-bold ${isActive ? 'text-violet-200' : 'text-gray-600'}`}>
+                  {stage.label}
+                </div>
+                {isBatch && isMissed && isActive && (
+                  <div className="text-xs text-amber-400">⚠️ Skipped in batch</div>
+                )}
+              </div>
+              {isCurrent && (
+                <motion.div
+                  animate={isEvent ? { opacity: [0.5, 1, 0.5] } : {}}
+                  transition={{ repeat: Infinity, duration: 0.8 }}
+                  className={`text-xs font-bold ${isEvent ? 'text-violet-400' : 'text-yellow-400'}`}
+                >
+                  {isEvent ? '⚡ Live' : isManual ? '👤 Manual' : '⏱ Batch'}
+                </motion.div>
+              )}
+            </motion.div>
+          </div>
+        );
+      })}
+
+      {staleness && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-amber-400 font-bold self-center">
+          ⚠️ {staleness} — status page was wrong the whole time
+        </motion.div>
+      )}
+
+      {isManual && activeStage === 1 && phase === 'done' && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-red-400 font-bold text-center">
+          ❌ Package delivered but tracking still shows "Processing"
+        </motion.div>
+      )}
+
+      <div className="text-xs text-gray-600 text-center mt-1">
+        {isManual && 'Support team manually checks each system — cannot keep up at scale.'}
+        {isBatch && 'Batch sync runs hourly — rapid state changes are missed entirely.'}
+        {isEvent && 'Each system publishes an event the moment status changes — instant updates.'}
+      </div>
     </div>
   );
 }

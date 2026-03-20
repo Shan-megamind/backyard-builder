@@ -1,5 +1,8 @@
+export type QuestId = 'spotify' | 'amazon';
+
 export type GameScreen =
   | 'title'
+  | 'quest_select'
   | 'intro'
   | 'problem'
   | 'build'
@@ -43,7 +46,20 @@ export interface GenericOutcome {
   builderExplanation: string;
   systemExplanation: string;
   isOptimal: boolean;
-  optimalHint?: string; // shown when not optimal
+  optimalHint?: string;
+}
+
+// ── Per-scenario result (recorded when player clicks Continue) ─────────────────
+
+export interface ScenarioResult {
+  scenarioId: number;
+  outcomeKey: string;
+  score: number;        // 25 | 55 | 75 | 100
+  isOptimal: boolean;
+  conceptUnlocked: string;
+  label: string;
+  emoji: string;
+  optimalHint?: string;
 }
 
 // ── Scenarios 2-6 types (card-selection build) ────────────────────────────────
