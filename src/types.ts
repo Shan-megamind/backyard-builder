@@ -1,4 +1,4 @@
-export type QuestId = 'spotify' | 'amazon';
+export type QuestId = 'spotify' | 'amazon' | 'photo-social';
 
 export type GameScreen =
   | 'title'

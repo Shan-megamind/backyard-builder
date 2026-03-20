@@ -15,6 +15,7 @@ import EndScreen from './components/EndScreen';
 import NavBar from './components/NavBar';
 import { getScenario, getOutcomeData, calcOutcomeScore, getQuestScenarioCount } from './data/index';
 import { AMAZON_INTRO_LINES } from './data/amazonScenarios';
+import { PHOTO_SOCIAL_INTRO_LINES } from './data/photoSocialScenarios';
 import { INTRO_LINES } from './data/scenario1';
 
 // ── localStorage helpers ──────────────────────────────────────────────────────
@@ -248,7 +249,11 @@ export default function App() {
     handleBackToQuests();
   }
 
-  const introLines = questId === 'amazon' ? AMAZON_INTRO_LINES : INTRO_LINES;
+  const introLines = questId === 'amazon'
+    ? AMAZON_INTRO_LINES
+    : questId === 'photo-social'
+    ? PHOTO_SOCIAL_INTRO_LINES
+    : INTRO_LINES;
 
   return (
     <div className={`min-h-screen overflow-x-hidden ${showNavBar ? 'pt-11' : ''}`}>
@@ -356,7 +361,7 @@ export default function App() {
       {showNavBar && (
         <div className="fixed bottom-0 left-0 right-0 h-1 bg-gray-200 z-50">
           <motion.div
-            className="h-full bg-violet-500"
+            className={`h-full ${questId === 'amazon' ? 'bg-orange-500' : questId === 'photo-social' ? 'bg-pink-500' : 'bg-violet-500'}`}
             animate={{ width: `${progress * 100}%` }}
             transition={{ duration: 0.5 }}
           />

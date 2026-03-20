@@ -193,6 +193,17 @@ function ScenarioVisual({
       default: return null;
     }
   }
+  if (questId === 'photo-social') {
+    switch (scenarioId) {
+      case 1: return <FeedDeliveryVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
+      case 2: return <PhotoCdnVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
+      case 3: return <FeedRankingVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
+      case 4: return <NotificationVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
+      case 5: return <UploadPipelineVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
+      case 6: return <DiscoveryVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
+      default: return null;
+    }
+  }
   switch (scenarioId) {
     case 2: return <CdnVisual optionId={optionId} phase={phase} />;
     case 3: return <SearchVisual optionId={optionId} phase={phase} isGood={outcome.isOptimal} />;
@@ -1558,6 +1569,645 @@ function TrackingVisual({ optionId, phase }: { optionId: string; phase: SimPhase
         {isBatch && 'Batch sync runs hourly — rapid state changes are missed entirely.'}
         {isEvent && 'Each system publishes an event the moment status changes — instant updates.'}
       </div>
+    </div>
+  );
+}
+
+// ── Photo Social Visuals ──────────────────────────────────────────────────────
+
+// ── Visual: Feed Delivery (Photo Social S1) ───────────────────────────────────
+
+function FeedDeliveryVisual({ optionId, phase }: { optionId: string; phase: SimPhase; isGood: boolean }) {
+  const isFanOutWrite = optionId === 'fan-out-write';
+  const isFanOutRead = optionId === 'fan-out-read';
+  const isGlobal = optionId === 'global-feed';
+
+  const [feedPosts, setFeedPosts] = useState<{ label: string; sub: string; color: string }[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const FRIEND_POSTS = [
+    { label: '🏖️  Maya posted', sub: 'Beach day!', color: 'bg-violet-900/40 border-violet-700' },
+    { label: '🎮  Sam posted', sub: 'New high score', color: 'bg-violet-900/40 border-violet-700' },
+    { label: '🐕  Zoe posted', sub: 'Meet Biscuit', color: 'bg-violet-900/40 border-violet-700' },
+  ];
+  const GLOBAL_POSTS = [
+    { label: '🎤  @pop_star posted', sub: 'Concert tonight!', color: 'bg-red-900/30 border-red-700' },
+    { label: '🏟️  @sports_fan posted', sub: 'Final score 3-2', color: 'bg-red-900/30 border-red-700' },
+    { label: '🚀  @tech_bro posted', sub: 'Just shipped!', color: 'bg-red-900/30 border-red-700' },
+  ];
+
+  useEffect(() => {
+    if (phase !== 'running') return;
+    if (isFanOutWrite) {
+      setTimeout(() => setFeedPosts(FRIEND_POSTS), 350);
+    } else if (isFanOutRead) {
+      setLoading(true);
+      setTimeout(() => { setLoading(false); setFeedPosts([FRIEND_POSTS[0]]); }, 1700);
+      setTimeout(() => setFeedPosts([FRIEND_POSTS[0], FRIEND_POSTS[1]]), 2400);
+      setTimeout(() => setFeedPosts(FRIEND_POSTS), 3100);
+    } else {
+      setTimeout(() => setFeedPosts(GLOBAL_POSTS), 350);
+    }
+  }, [phase]);
+
+  const statusText = () => {
+    if (phase === 'idle') return <span className="text-gray-500">Alex opens the app…</span>;
+    if (loading) return <span className="text-yellow-400 font-bold">⏳ Fetching from 12 followed accounts…</span>;
+    if (feedPosts.length > 0 && isGlobal) return <span className="text-red-400 font-bold">🌍 Fast — but these aren't her friends</span>;
+    if (feedPosts.length > 0 && isFanOutWrite) return <span className="text-green-400 font-bold">⚡ Feed loaded instantly — pre-built!</span>;
+    if (feedPosts.length === FRIEND_POSTS.length && isFanOutRead) return <span className="text-amber-400 font-bold">✓ Correct content — but took 3+ seconds</span>;
+    return null;
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-4 w-full max-w-md px-6">
+      {/* Phone frame */}
+      <div className="bg-gray-800 border-2 border-gray-600 rounded-3xl p-3 w-56 min-h-48">
+        <div className="bg-gray-900 rounded-2xl px-3 py-2 mb-2 flex items-center gap-2 border border-gray-700">
+          <span className="text-lg">📸</span>
+          <span className="text-xs font-bold text-gray-300">Alex's Feed</span>
+        </div>
+        <div className="space-y-1.5 min-h-28 flex flex-col justify-center">
+          {loading && (
+            <motion.div
+              animate={{ opacity: [0.4, 1, 0.4] }}
+              transition={{ repeat: Infinity, duration: 0.8 }}
+              className="text-center text-xs text-yellow-400 font-bold py-4"
+            >
+              ⏳ Loading…
+            </motion.div>
+          )}
+          <AnimatePresence>
+            {feedPosts.map((post, i) => (
+              <motion.div
+                key={post.label}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.1 }}
+                className={`border rounded-xl px-2.5 py-2 text-xs ${post.color}`}
+              >
+                <div className="font-bold text-white leading-tight">{post.label}</div>
+                <div className="text-gray-400 text-xs">{post.sub}</div>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+          {!loading && feedPosts.length === 0 && phase !== 'idle' && (
+            <div className="text-center text-gray-600 text-xs py-4">📭 No posts to show</div>
+          )}
+          {phase === 'idle' && (
+            <div className="text-center text-gray-600 text-xs py-4">…</div>
+          )}
+        </div>
+      </div>
+
+      <div className="text-sm text-center min-h-5">{statusText()}</div>
+
+      <div className="text-xs text-gray-600 text-center">
+        {isFanOutWrite && 'Feed pre-built when friends post — O(1) read, no wait.'}
+        {isFanOutRead && 'Feed assembled at open time — O(following_count) per request.'}
+        {isGlobal && 'Global timeline — fast, but shows strangers instead of friends.'}
+      </div>
+    </div>
+  );
+}
+
+// ── Visual: Photo CDN (Photo Social S2) ───────────────────────────────────────
+
+function PhotoCdnVisual({ optionId, phase }: { optionId: string; phase: SimPhase; isGood: boolean }) {
+  const isCdn = optionId === 'object-cdn';
+  const isBigger = optionId === 'bigger-server';
+  const isCompress = optionId === 'compress-photos';
+
+  const USERS = [
+    { label: 'Nearby', icon: '👦', dist: 'short' },
+    { label: 'Midtown', icon: '👧', dist: 'mid' },
+    { label: 'Far Side', icon: '👱', dist: 'far' },
+  ];
+
+  const loadTime = (dist: string) => {
+    if (isCdn) return { text: '120ms ✅', color: 'text-green-400' };
+    if (isBigger) return dist === 'far' ? { text: '4.2s ⚠️', color: 'text-yellow-400' } : { text: '1.1s ✅', color: 'text-green-400' };
+    if (isCompress) return { text: dist === 'far' ? '1.8s 🤢' : '0.8s', color: dist === 'far' ? 'text-amber-400' : 'text-gray-400' };
+    return { text: '…', color: 'text-gray-500' };
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-6 w-full max-w-lg px-6">
+      {/* Photo + server */}
+      <div className="flex items-center gap-4 justify-center">
+        <div className="bg-gray-800 border-2 border-gray-600 rounded-2xl p-3 text-center w-28">
+          <div className="text-3xl mb-1">🖼️</div>
+          <div className="text-xs text-gray-400 font-bold">Photo Server</div>
+          {isBigger && <div className="text-xs text-green-400 mt-0.5">Upgraded</div>}
+        </div>
+        {isCdn && (
+          <>
+            <div className="text-gray-500">→</div>
+            <motion.div
+              initial={{ scale: 0 }}
+              animate={phase !== 'idle' ? { scale: 1 } : {}}
+              transition={{ type: 'spring', stiffness: 200 }}
+              className="bg-emerald-900/40 border border-emerald-600 rounded-2xl p-3 text-center w-28"
+            >
+              <div className="text-3xl mb-1">🌐</div>
+              <div className="text-xs text-emerald-300 font-bold">CDN Edge</div>
+              <div className="text-xs text-green-400 mt-0.5">Cached locally</div>
+            </motion.div>
+          </>
+        )}
+      </div>
+
+      {/* Users with load times */}
+      <div className="flex gap-4 justify-center w-full">
+        {USERS.map((u, i) => {
+          const lt = loadTime(u.dist);
+          return (
+            <motion.div
+              key={u.label}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 + i * 0.15 }}
+              className="flex flex-col items-center gap-1.5 bg-gray-800 border border-gray-700 rounded-2xl p-3 flex-1 text-center"
+            >
+              <span className="text-2xl">{u.icon}</span>
+              <div className="text-xs text-gray-400 font-bold">{u.label}</div>
+              {phase !== 'idle' && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.4 + i * 0.2 }}
+                  className={`text-xs font-bold ${lt.color}`}
+                >
+                  {lt.text}
+                </motion.div>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+
+      {isCompress && phase === 'done' && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-amber-400 font-bold text-center">
+          🤢 Faster delivery, but photos look blurry — users notice on a photo product
+        </motion.div>
+      )}
+      <div className="text-xs text-gray-600 text-center">
+        {isCdn && '✅ CDN edge nodes cache photos near every user — origin never touched on reads.'}
+        {isBigger && '💪 Bigger server helps nearby users but distant latency remains high.'}
+        {isCompress && '🗜️ Smaller files transfer faster but quality degrades — wrong trade for a photo product.'}
+      </div>
+    </div>
+  );
+}
+
+// ── Visual: Feed Ranking (Photo Social S3) ────────────────────────────────────
+
+function FeedRankingVisual({ optionId, phase }: { optionId: string; phase: SimPhase; isGood: boolean }) {
+  const isChronological = optionId === 'chronological';
+  const isPopularity = optionId === 'popularity-sort';
+  const isRelevance = optionId === 'relevance-rank';
+
+  type Post = { id: number; author: string; emoji: string; score: number; relevant: boolean };
+
+  const ALL_POSTS: Post[] = [
+    { id: 1, author: 'Maya (close friend)', emoji: '🏖️', score: 62, relevant: true },
+    { id: 2, author: 'PowerPoster 🔥 ×40/day', emoji: '📣', score: 91, relevant: false },
+    { id: 3, author: 'Sam (close friend)', emoji: '🎮', score: 58, relevant: true },
+    { id: 4, author: 'PowerPoster 🔥 ×40/day', emoji: '📢', score: 88, relevant: false },
+    { id: 5, author: 'Zoe (close friend)', emoji: '🐕', score: 55, relevant: true },
+    { id: 6, author: 'PowerPoster 🔥 ×40/day', emoji: '📯', score: 85, relevant: false },
+  ];
+
+  const getSorted = (): Post[] => {
+    if (isPopularity) return [...ALL_POSTS].sort((a, b) => b.score - a.score);
+    if (isRelevance) return [...ALL_POSTS].sort((a, b) => (b.relevant ? 1 : -1) - (a.relevant ? 1 : -1));
+    return ALL_POSTS; // chronological = original order
+  };
+
+  const sorted = phase !== 'idle' ? getSorted() : ALL_POSTS;
+
+  return (
+    <div className="flex flex-col items-center gap-3 w-full max-w-md px-4">
+      <div className="text-xs text-gray-500 font-bold uppercase tracking-wider self-start">
+        {isChronological ? '🕐 Chronological' : isPopularity ? '🔥 By Global Popularity' : '🤖 Personalized Relevance'}
+      </div>
+
+      <div className="w-full space-y-1.5">
+        {sorted.slice(0, 4).map((post, i) => (
+          <motion.div
+            key={post.id}
+            layout
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: i * 0.12 }}
+            className={`flex items-center gap-2.5 border rounded-xl px-3 py-2 text-xs ${
+              isRelevance && post.relevant
+                ? 'bg-violet-900/30 border-violet-600'
+                : isRelevance && !post.relevant
+                ? 'bg-gray-800/40 border-gray-700 opacity-60'
+                : isPopularity && !post.relevant
+                ? 'bg-sky-900/30 border-sky-700'
+                : 'bg-gray-800 border-gray-700'
+            }`}
+          >
+            <span className="text-lg">{post.emoji}</span>
+            <div className="flex-1 min-w-0">
+              <div className="font-bold text-white text-xs truncate">{post.author}</div>
+            </div>
+            {isPopularity && (
+              <span className="text-sky-400 font-bold shrink-0">{post.score} ❤️</span>
+            )}
+            {isRelevance && post.relevant && (
+              <span className="text-violet-400 font-bold shrink-0">✓ close friend</span>
+            )}
+            {i === 0 && <span className="text-yellow-500 font-bold shrink-0 text-xs">#1</span>}
+          </motion.div>
+        ))}
+      </div>
+
+      <div className="text-xs text-gray-600 text-center mt-1">
+        {isChronological && '⚠️ Power users flood the top — 3 close friends buried below 40 posts.'}
+        {isPopularity && '⚠️ Globally popular posts dominate — same feed for every user.'}
+        {isRelevance && '✅ Close friends surface first — based on your personal engagement history.'}
+      </div>
+    </div>
+  );
+}
+
+// ── Visual: Notifications (Photo Social S4) ───────────────────────────────────
+
+function NotificationVisual({ optionId, phase }: { optionId: string; phase: SimPhase; isGood: boolean }) {
+  const isPush = optionId === 'push-notifications';
+  const isPolling = optionId === 'polling-30s';
+  const isEmail = optionId === 'email-digest';
+
+  const [notifArrived, setNotifArrived] = useState(false);
+  const [countdown, setCountdown] = useState(30);
+  const [pollCount, setPollCount] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  function t(ms: number, fn: () => void) {
+    const id = setTimeout(fn, ms);
+    timerRef.current.push(id);
+  }
+
+  useEffect(() => {
+    if (phase !== 'running') return;
+    if (isPush) {
+      t(600, () => setNotifArrived(true));
+    } else if (isPolling) {
+      // Simulate countdown then poll
+      let c = 30;
+      const iv = setInterval(() => {
+        c = Math.max(0, c - 4);
+        setCountdown(c);
+        setPollCount(p => p + 1);
+        if (c === 0) { setNotifArrived(true); clearInterval(iv); }
+      }, 400);
+      timerRef.current.push(iv as unknown as ReturnType<typeof setTimeout>);
+    } else {
+      // Email arrives "next day"
+      t(3500, () => setNotifArrived(true));
+    }
+    return () => timerRef.current.forEach(clearTimeout);
+  }, [phase]);
+
+  return (
+    <div className="flex flex-col items-center gap-5 w-full max-w-sm px-6">
+      {/* Event: someone liked your photo */}
+      <div className="bg-gray-800 border border-gray-700 rounded-2xl px-4 py-3 w-full flex items-center gap-3">
+        <span className="text-2xl">❤️</span>
+        <div>
+          <div className="text-xs font-bold text-white">Sam liked your photo</div>
+          <div className="text-xs text-gray-500">Just now</div>
+        </div>
+      </div>
+
+      <div className="text-lg text-gray-600">↓ How does it reach you?</div>
+
+      {/* Delivery mechanism */}
+      <div className="bg-gray-800 border-2 border-gray-700 rounded-2xl p-4 w-full text-center">
+        {isPush && (
+          <>
+            <div className="text-3xl mb-2">📱</div>
+            <div className="text-xs text-gray-400 font-bold mb-2">Push Service</div>
+            <AnimatePresence>
+              {notifArrived ? (
+                <motion.div
+                  initial={{ scale: 0 }}
+                  animate={{ scale: 1 }}
+                  className="bg-violet-900/50 border border-violet-500 rounded-xl px-3 py-2 text-sm font-bold text-violet-200"
+                >
+                  ⚡ Sam liked your photo — <span className="text-green-400">instantly!</span>
+                </motion.div>
+              ) : (
+                <div className="text-xs text-gray-500">Waiting for event…</div>
+              )}
+            </AnimatePresence>
+          </>
+        )}
+        {isPolling && (
+          <>
+            <div className="text-3xl mb-1">🔄</div>
+            <div className="text-xs text-gray-400 font-bold mb-1">Polling server</div>
+            <div className="text-xs text-amber-400 mb-2">Poll #{pollCount} — next in {countdown}s</div>
+            <div className="h-1.5 bg-gray-700 rounded-full overflow-hidden">
+              <motion.div
+                animate={{ width: `${((30 - countdown) / 30) * 100}%` }}
+                className="h-full bg-amber-500 rounded-full"
+                transition={{ duration: 0.3 }}
+              />
+            </div>
+            {notifArrived && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-2 text-xs text-amber-300 font-bold">
+                Found after {pollCount} polls — {30 - countdown}s delay
+              </motion.div>
+            )}
+          </>
+        )}
+        {isEmail && (
+          <>
+            <div className="text-3xl mb-2">📧</div>
+            <div className="text-xs text-gray-400 font-bold mb-1">Daily digest</div>
+            {notifArrived ? (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-sky-300 font-bold">
+                "12 people liked your photos" <span className="text-gray-500">(sent 18h later)</span>
+              </motion.div>
+            ) : (
+              <div className="text-xs text-gray-500">Waiting for tonight's batch…</div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div className="text-xs text-gray-600 text-center">
+        {isPush && '✅ Server-initiated delivery — phone buzzes the moment the like happens.'}
+        {isPolling && '⚠️ Client asks "any news?" every 30s — works but wastes resources.'}
+        {isEmail && '❌ Batch delivery — by the time it arrives, the moment has passed.'}
+      </div>
+    </div>
+  );
+}
+
+// ── Visual: Upload Pipeline (Photo Social S5) ─────────────────────────────────
+
+function UploadPipelineVisual({ optionId, phase }: { optionId: string; phase: SimPhase; isGood: boolean }) {
+  const isSync = optionId === 'sync-process';
+  const isAsync = optionId === 'async-pipeline';
+  const isClient = optionId === 'client-resize';
+
+  const [stepsDone, setStepsDone] = useState<number>(-1);
+  const [uploadConfirmed, setUploadConfirmed] = useState(false);
+  const [timedOut, setTimedOut] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  function t(ms: number, fn: () => void) {
+    const id = setTimeout(fn, ms);
+    timerRef.current.push(id);
+  }
+
+  const STEPS = ['Receive file', 'Resize (4 sizes)', 'Generate thumbnail', 'Run content check', 'Push to CDN'];
+
+  useEffect(() => {
+    if (phase !== 'running') return;
+    if (isSync) {
+      STEPS.forEach((_, i) => t(600 + i * 700, () => setStepsDone(i)));
+      t(600 + 3 * 700, () => setTimedOut(true)); // times out mid-pipeline
+    } else if (isAsync) {
+      t(400, () => { setStepsDone(0); setUploadConfirmed(true); });
+      STEPS.slice(1).forEach((_, i) => t(1000 + i * 600, () => setStepsDone(i + 1)));
+    } else {
+      // client-resize: client-side processing first, then upload
+      t(500, () => setStepsDone(0)); // "Resize on device"
+      t(1200, () => setStepsDone(1)); // "Upload compressed file"
+      t(2000, () => { setStepsDone(2); setUploadConfirmed(true); });
+    }
+    return () => timerRef.current.forEach(clearTimeout);
+  }, [phase]);
+
+  const clientSteps = ['Resize on device (CPU)', 'Upload compressed file', 'Server confirms'];
+
+  return (
+    <div className="flex flex-col items-center gap-4 w-full max-w-md px-4">
+      {/* User action */}
+      <div className="flex items-center gap-3 bg-gray-800 border border-gray-700 rounded-2xl px-4 py-2.5 w-full">
+        <span className="text-xl">📸</span>
+        <div className="flex-1">
+          <div className="text-xs font-bold text-white">User taps "Post"</div>
+          <div className="text-xs text-gray-500">On 3G connection</div>
+        </div>
+        {uploadConfirmed && !timedOut && (
+          <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-xs font-bold text-green-400">✅ Confirmed</motion.span>
+        )}
+        {timedOut && (
+          <motion.span initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-xs font-bold text-red-400">⏱ Timed out</motion.span>
+        )}
+      </div>
+
+      {/* Pipeline steps */}
+      <div className="w-full space-y-1.5">
+        {(isClient ? clientSteps : STEPS).map((step, i) => {
+          const isDone = stepsDone >= i;
+          const isCurrent = stepsDone === i - 1 && !timedOut;
+          const isFailed = timedOut && stepsDone === i - 1;
+          const isBackground = isAsync && i > 0 && uploadConfirmed;
+          return (
+            <motion.div
+              key={step}
+              animate={isDone ? { borderColor: isBackground ? '#8b5cf6' : '#10b981' } : {}}
+              className={`flex items-center gap-2.5 border rounded-xl px-3 py-2 text-xs transition-colors ${
+                isFailed ? 'border-red-600 bg-red-900/20'
+                : isDone && isBackground ? 'border-violet-600 bg-violet-900/20'
+                : isDone ? 'border-green-600 bg-green-900/20'
+                : 'border-gray-700 bg-gray-800'
+              }`}
+            >
+              <span className={`text-sm ${isFailed ? 'text-red-400' : isDone ? 'text-green-400' : 'text-gray-600'}`}>
+                {isFailed ? '✗' : isDone ? '✓' : isCurrent ? '⚙' : '○'}
+              </span>
+              <span className={`flex-1 ${isDone ? 'text-white' : 'text-gray-500'}`}>{step}</span>
+              {isBackground && i > 0 && isDone && (
+                <span className="text-violet-400 text-xs font-bold">background</span>
+              )}
+              {i === 0 && isAsync && isDone && (
+                <span className="text-green-400 text-xs font-bold">user notified ✅</span>
+              )}
+            </motion.div>
+          );
+        })}
+      </div>
+
+      <div className="text-xs text-gray-600 text-center">
+        {isSync && '❌ User waits for every step — timeout on slow connections.'}
+        {isAsync && '✅ User gets instant confirmation — processing continues in background.'}
+        {isClient && '⚠️ Faster upload, but device CPU does the work — inconsistent on old phones.'}
+      </div>
+    </div>
+  );
+}
+
+// ── Visual: Discovery (Photo Social S6) ──────────────────────────────────────
+
+function DiscoveryVisual({ optionId, phase }: { optionId: string; phase: SimPhase; isGood: boolean }) {
+  const isGraph = optionId === 'graph-traversal';
+  const isSearch = optionId === 'search-bar';
+  const isPopular = optionId === 'popularity-rank';
+
+  const [revealedNodes, setRevealedNodes] = useState<number[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const timerRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
+  function t(ms: number, fn: () => void) {
+    const id = setTimeout(fn, ms);
+    timerRef.current.push(id);
+  }
+
+  const GRAPH_NODES = [
+    { id: 0, label: 'New User', emoji: '👤', x: 50, y: 80, type: 'self' },
+    { id: 1, label: 'Contact A', emoji: '👧', x: 20, y: 50, type: 'friend' },
+    { id: 2, label: 'Contact B', emoji: '👦', x: 80, y: 50, type: 'friend' },
+    { id: 3, label: 'Maya', emoji: '🧑', x: 10, y: 20, type: 'fof' },
+    { id: 4, label: 'Sam', emoji: '👩', x: 35, y: 15, type: 'fof' },
+    { id: 5, label: 'Zoe', emoji: '👱', x: 65, y: 20, type: 'fof' },
+    { id: 6, label: 'Alex', emoji: '🧔', x: 90, y: 20, type: 'fof' },
+  ];
+
+  const TRENDING = [
+    { title: 'Sunset at the pier 🌅', likes: '24K', emoji: '📸', trend: '+2.1K/hr' },
+    { title: 'Street food festival 🍜', likes: '18K', emoji: '🎉', trend: '+1.7K/hr' },
+    { title: 'Mountain trail at dawn 🏔️', likes: '12K', emoji: '🌄', trend: '+940/hr' },
+  ];
+
+  useEffect(() => {
+    if (phase !== 'running') return;
+    if (isGraph) {
+      t(300, () => setRevealedNodes([0]));
+      t(700, () => setRevealedNodes([0, 1, 2]));
+      t(1200, () => setRevealedNodes([0, 1, 2, 3, 4]));
+      t(1800, () => setRevealedNodes([0, 1, 2, 3, 4, 5, 6]));
+    } else if (isSearch) {
+      const name = '@sam_j';
+      name.split('').forEach((_, i) => {
+        t(300 + i * 200, () => setSearchText(name.slice(0, i + 1)));
+      });
+    } else {
+      setRevealedNodes([0, 1, 2]);
+    }
+    return () => timerRef.current.forEach(clearTimeout);
+  }, [phase]);
+
+  return (
+    <div className="flex flex-col items-center gap-4 w-full max-w-lg px-4">
+      {isGraph && (
+        <>
+          <div className="text-xs text-gray-500 font-bold uppercase tracking-wider">
+            🕸️ Explore — friends-of-friends content
+          </div>
+          <div className="relative w-full" style={{ height: '180px' }}>
+            {/* Edges */}
+            <svg className="absolute inset-0 w-full h-full pointer-events-none">
+              {[[0,1],[0,2],[1,3],[1,4],[2,5],[2,6]].map(([a,b], i) => {
+                const na = GRAPH_NODES[a];
+                const nb = GRAPH_NODES[b];
+                const revealed = revealedNodes.includes(nb.id);
+                return (
+                  <motion.line
+                    key={i}
+                    x1={`${na.x}%`} y1={`${na.y}%`}
+                    x2={`${nb.x}%`} y2={`${nb.y}%`}
+                    stroke={nb.type === 'fof' ? '#0ea5e9' : '#4b5563'}
+                    strokeWidth="1.5"
+                    strokeDasharray="3 2"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: revealed ? 0.7 : 0 }}
+                    transition={{ duration: 0.3 }}
+                  />
+                );
+              })}
+            </svg>
+            {/* Nodes */}
+            {GRAPH_NODES.map(node => (
+              <motion.div
+                key={node.id}
+                initial={{ scale: 0, opacity: 0 }}
+                animate={revealedNodes.includes(node.id) ? { scale: 1, opacity: 1 } : {}}
+                transition={{ type: 'spring', stiffness: 300 }}
+                className="absolute flex flex-col items-center"
+                style={{ left: `${node.x}%`, top: `${node.y}%`, transform: 'translate(-50%,-50%)' }}
+              >
+                <div className={`text-xl rounded-full border-2 p-0.5 ${
+                  node.type === 'self' ? 'border-white bg-gray-700'
+                  : node.type === 'friend' ? 'border-sky-400 bg-sky-900/40'
+                  : 'border-sky-400 bg-sky-900/30'
+                }`}>
+                  {node.emoji}
+                </div>
+                <div className="text-xs text-gray-400 mt-0.5 whitespace-nowrap">{node.label}</div>
+                {node.type === 'fof' && revealedNodes.includes(node.id) && (
+                  <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="text-xs text-sky-400 font-bold">
+                    Shown
+                  </motion.div>
+                )}
+              </motion.div>
+            ))}
+          </div>
+          <div className="text-xs text-sky-400 font-bold text-center">
+            {revealedNodes.length >= 7 ? `✓ Showing content from friends' networks — familiar but not surprising` : '…surfacing friends-of-friends content…'}
+          </div>
+        </>
+      )}
+
+      {isSearch && (
+        <div className="w-full space-y-3">
+          <div className="bg-gray-800 border border-gray-700 rounded-2xl px-4 py-3 flex items-center gap-2 w-full">
+            <span className="text-gray-400">🔍</span>
+            <span className="text-gray-300 font-mono text-sm">
+              {searchText}
+              {phase === 'running' && (
+                <motion.span animate={{ opacity: [1, 0, 1] }} transition={{ repeat: Infinity, duration: 0.6 }}>|</motion.span>
+              )}
+            </span>
+          </div>
+          {searchText.length >= 5 ? (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-xs">
+              <div className="text-white font-bold">👦 @sam_jones</div>
+              <div className="text-gray-500 mt-0.5">Works if you already know the exact username</div>
+            </motion.div>
+          ) : (
+            <div className="text-xs text-gray-600 text-center">New users have to know who to search for…</div>
+          )}
+          <div className="text-xs text-amber-400 text-center">
+            ⚠️ Can't discover people you don't already know exist
+          </div>
+        </div>
+      )}
+
+      {isPopular && (
+        <div className="w-full space-y-2">
+          <div className="text-xs text-gray-500 font-bold uppercase tracking-wider text-center mb-2">
+            🔥 Explore — Trending Right Now
+          </div>
+          {TRENDING.map((post, i) => (
+            <motion.div
+              key={post.title}
+              initial={{ opacity: 0, x: -8 }}
+              animate={revealedNodes.length > 0 ? { opacity: 1, x: 0 } : {}}
+              transition={{ delay: i * 0.15 }}
+              className="flex items-center gap-3 bg-emerald-900/20 border border-emerald-700/50 rounded-xl px-3 py-2"
+            >
+              <span className="text-2xl">{post.emoji}</span>
+              <div className="flex-1">
+                <div className="text-xs font-bold text-white">{post.title}</div>
+                <div className="text-xs text-emerald-400">❤️ {post.likes} likes</div>
+              </div>
+              <span className="text-xs text-emerald-300 font-bold">{post.trend}</span>
+            </motion.div>
+          ))}
+          <div className="text-xs text-emerald-400 font-bold text-center">
+            ✅ Explore shows what's catching fire — users keep scrolling
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { motion } from 'framer-motion';
 import {
   SCENARIO_CONCEPTS, SCENARIO_EMOJIS,
   AMAZON_SCENARIO_CONCEPTS, AMAZON_SCENARIO_EMOJIS,
+  PHOTO_SOCIAL_SCENARIO_CONCEPTS, PHOTO_SOCIAL_SCENARIO_EMOJIS,
 } from '../data/index';
 import type { QuestId, ScenarioResult } from '../types';
 
@@ -102,13 +103,35 @@ const QUEST_META: Record<QuestId, {
       { icon: '📡', label: 'Event\nStream' },
     ],
   },
+  'photo-social': {
+    badge: '📸 Build Instagram — Quest Complete',
+    headline: 'You built Instagram.',
+    subheading: 'From empty feeds and broken uploads to a real-time, personalized, scalable social network.',
+    pmLesson: 'Social products live or die on feed delivery speed, notification latency, and content relevance. Fan-out strategy, CDN for media, ranking algorithms, async pipelines, and Explore curation are not backend details — they determine whether users stay engaged or churn.',
+    archNodes: [
+      { icon: '👥', label: 'Users' },
+      { icon: '📬', label: 'Fan-out\nWrite' },
+      { icon: '🌐', label: 'Photo\nCDN' },
+      { icon: '🤖', label: 'Feed\nRanker' },
+      { icon: '⚡', label: 'Push\nNotifs' },
+      { icon: '🔥', label: 'Explore\nFeed' },
+    ],
+  },
 };
 
 // ── Main component ────────────────────────────────────────────────────────────
 
 export default function EndScreen({ questId, results, onRestart, onBackToQuests, onRedoScenario }: Props) {
-  const concepts = questId === 'amazon' ? AMAZON_SCENARIO_CONCEPTS : SCENARIO_CONCEPTS;
-  const emojis   = questId === 'amazon' ? AMAZON_SCENARIO_EMOJIS   : SCENARIO_EMOJIS;
+  const concepts = questId === 'amazon'
+    ? AMAZON_SCENARIO_CONCEPTS
+    : questId === 'photo-social'
+    ? PHOTO_SOCIAL_SCENARIO_CONCEPTS
+    : SCENARIO_CONCEPTS;
+  const emojis = questId === 'amazon'
+    ? AMAZON_SCENARIO_EMOJIS
+    : questId === 'photo-social'
+    ? PHOTO_SOCIAL_SCENARIO_EMOJIS
+    : SCENARIO_EMOJIS;
   const meta = QUEST_META[questId];
 
   const totalScenarios = 6;
@@ -117,7 +140,12 @@ export default function EndScreen({ questId, results, onRestart, onBackToQuests,
     : 0;
   const tier = getQualityTier(avgScore);
   const weakScenarios = results.filter(r => r.score < 75);
-  const isSpotify = questId === 'spotify';
+  const questButtonClass = questId === 'spotify'
+    ? 'bg-violet-600 hover:bg-violet-700'
+    : questId === 'amazon'
+    ? 'bg-orange-500 hover:bg-orange-600'
+    : 'bg-pink-500 hover:bg-pink-600';
+  const questName = questId === 'spotify' ? 'Spotify' : questId === 'amazon' ? 'Amazon' : 'Instagram';
 
   return (
     <div className={`min-h-screen bg-gradient-to-br ${tier.gradient} flex flex-col items-center justify-start py-12 px-6 overflow-y-auto`}>
@@ -269,7 +297,7 @@ export default function EndScreen({ questId, results, onRestart, onBackToQuests,
         className="w-full max-w-2xl bg-white/5 border border-white/10 rounded-3xl p-5 mb-8"
       >
         <h2 className={`text-xs font-bold uppercase tracking-widest ${tier.accentColor} mb-4 text-center`}>
-          Your Complete {isSpotify ? 'Spotify' : 'Amazon'} Architecture
+          Your Complete {questName} Architecture
         </h2>
         <div className="flex items-center justify-between gap-1 text-center">
           {meta.archNodes.map((node, i) => (
@@ -321,7 +349,7 @@ export default function EndScreen({ questId, results, onRestart, onBackToQuests,
         </button>
         <button
           onClick={onRestart}
-          className={`${isSpotify ? 'bg-violet-600 hover:bg-violet-700' : 'bg-orange-500 hover:bg-orange-600'} active:scale-[0.98] text-white font-bold px-8 py-4 rounded-2xl shadow-lg transition-all hover:scale-[1.02] cursor-pointer`}
+          className={`${questButtonClass} active:scale-[0.98] text-white font-bold px-8 py-4 rounded-2xl shadow-lg transition-all hover:scale-[1.02] cursor-pointer`}
         >
           ↺ Play Again
         </button>

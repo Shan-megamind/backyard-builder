@@ -11,6 +11,8 @@ interface Props {
 export default function ScenarioBuild({ scenario, onTest, onBack }: Props) {
   const [selected, setSelected] = useState<string | null>(null);
   const [revealed, setRevealed] = useState<string | null>(null);
+  // Shuffle once on mount — order varies per session, correctness tied to option ID not position
+  const [shuffledOptions] = useState(() => [...scenario.options].sort(() => Math.random() - 0.5));
 
   function handleSelect(id: string) {
     setSelected(id);
@@ -86,7 +88,7 @@ export default function ScenarioBuild({ scenario, onTest, onBack }: Props) {
           </div>
 
           <div className="flex gap-4 justify-center items-stretch">
-            {scenario.options.map((option, idx) => (
+            {shuffledOptions.map((option, idx) => (
               <OptionCard
                 key={option.id}
                 option={option}

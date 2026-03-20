@@ -4,6 +4,7 @@ import type { QuestId } from '../types';
 const QUEST_META: Record<QuestId, { emoji: string; name: string }> = {
   spotify: { emoji: '🎵', name: 'Build Spotify' },
   amazon: { emoji: '📦', name: 'Build Amazon' },
+  'photo-social': { emoji: '📸', name: 'Build Instagram' },
 };
 
 interface Props {
@@ -24,11 +25,14 @@ export default function NavBar({ questId, scenarioId, totalScenarios, leaveLabel
       transition={{ duration: 0.2 }}
       className="fixed top-0 left-0 right-0 z-50 bg-white/95 backdrop-blur border-b border-gray-200 px-4 h-11 flex items-center justify-between"
     >
-      {/* Quest identity */}
-      <div className="flex items-center gap-2 min-w-0">
+      {/* Quest identity — clickable to go home */}
+      <button
+        onClick={onLeave}
+        className="flex items-center gap-2 min-w-0 cursor-pointer hover:opacity-70 transition-opacity"
+      >
         <span className="text-base">{emoji}</span>
         <span className="font-bold text-gray-800 text-sm truncate">{name}</span>
-      </div>
+      </button>
 
       {/* Scenario progress */}
       <div className="flex items-center gap-1.5">
